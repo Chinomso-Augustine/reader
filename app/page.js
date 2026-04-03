@@ -109,10 +109,14 @@ export default function Home() {
       const formData = new FormData();
       formData.append("file", nextFile);
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       const response = await fetch("/api/extract", {
         method: "POST",
-        body: formData
+        body: formData,
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       const data = await response.json();
       if (!response.ok) {
@@ -124,12 +128,13 @@ export default function Home() {
       setExtractProgress(100);
     } catch (err) {
       try {
+        setError("Server is taking too long; loading the first 2 pages...");
         const fallback = await extractTextClient(nextFile, 2);
         setExtractedText(fallback.text || "");
         setNumPages(fallback.numPages || null);
         setIsPartial(fallback.pagesToRead < (fallback.numPages || 0));
         setPartialPages(fallback.pagesToRead || 0);
-        setError("Server extraction failed; loaded the first 2 pages.");
+        setError("");
       } catch (fallbackErr) {
         setExtractedText("");
         setNumPages(null);
