@@ -45,6 +45,22 @@ export default function Home() {
     setCurrentIndex(0);
   };
 
+  const extractTextClient = async (nextFile) => {
+    const pdfjs = await import("pdfjs-dist/build/pdf");
+    pdfjs.GlobalWorkerOptions.workerSrc =
+      "https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
+    const data = await nextFile.arrayBuffer();
+    const doc = await pdfjs.getDocument({ data }).promise;
+    const pageTexts = [];
+    for (let pageNum = 1; pageNum <= doc.numPages; pageNum += 1) {
+      const page = await doc.getPage(pageNum);
+      const content = await page.getTextContent();
+      const strings = content.items.map((item) => item.str);
+      pageTexts.push(strings.join(" "));
+    }
+    return { text: pageTexts.join("\n\n"), numPages: doc.numPages };
+  };
+
   const handleFileSelected = async (nextFile) => {
     setError("");
 
@@ -80,9 +96,16 @@ export default function Home() {
       setExtractedText(data.text || "");
       setNumPages(data.numpages || null);
     } catch (err) {
-      setExtractedText("");
-      setNumPages(null);
-      setError(err.message || "Failed to extract text.");
+      try {
+        const fallback = await extractTextClient(nextFile);
+        setExtractedText(fallback.text || "");
+        setNumPages(fallback.numPages || null);
+        setError("Server extraction failed; used browser fallback.");
+      } catch (fallbackErr) {
+        setExtractedText("");
+        setNumPages(null);
+        setError(fallbackErr.message || "Failed to extract text.");
+      }
     } finally {
       setIsLoading(false);
     }
