@@ -26,6 +26,8 @@ export default function Home() {
   const [extractProgress, setExtractProgress] = useState(0);
   const [etaSeconds, setEtaSeconds] = useState(null);
   const extractStartRef = useRef(null);
+  const [isPartial, setIsPartial] = useState(false);
+  const [partialPages, setPartialPages] = useState(0);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("pdfreader-dark");
@@ -60,7 +62,7 @@ export default function Home() {
     setCurrentIndex(0);
   };
 
-  const extractTextClient = async (nextFile) => {
+  const extractTextClient = async (nextFile, maxPages = 2) => {
     const pdfjs = await import("pdfjs-dist/build/pdf");
     pdfjs.GlobalWorkerOptions.workerSrc =
       "https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
@@ -69,14 +71,15 @@ export default function Home() {
     const pageTexts = [];
     extractStartRef.current = Date.now();
     setExtractProgress(0);
-    for (let pageNum = 1; pageNum <= doc.numPages; pageNum += 1) {
+    const pagesToRead = Math.min(maxPages ?? doc.numPages, doc.numPages);
+    for (let pageNum = 1; pageNum <= pagesToRead; pageNum += 1) {
       const page = await doc.getPage(pageNum);
       const content = await page.getTextContent();
       const strings = content.items.map((item) => item.str);
       pageTexts.push(strings.join(" "));
-      setExtractProgress(Math.round((pageNum / doc.numPages) * 100));
+      setExtractProgress(Math.round((pageNum / pagesToRead) * 100));
     }
-    return { text: pageTexts.join("\n\n"), numPages: doc.numPages };
+    return { text: pageTexts.join("\n\n"), numPages: doc.numPages, pagesToRead };
   };
 
   const handleFileSelected = async (nextFile) => {
@@ -96,6 +99,8 @@ export default function Home() {
     setExtractProgress(0);
     setEtaSeconds(null);
     extractStartRef.current = Date.now();
+    setIsPartial(false);
+    setPartialPages(0);
     setFile(nextFile);
     setFileName(nextFile.name);
     resetPlayback();
@@ -119,10 +124,12 @@ export default function Home() {
       setExtractProgress(100);
     } catch (err) {
       try {
-        const fallback = await extractTextClient(nextFile);
+        const fallback = await extractTextClient(nextFile, 2);
         setExtractedText(fallback.text || "");
         setNumPages(fallback.numPages || null);
-        setError("Server extraction failed; used browser fallback.");
+        setIsPartial(fallback.pagesToRead < (fallback.numPages || 0));
+        setPartialPages(fallback.pagesToRead || 0);
+        setError("Server extraction failed; loaded the first 2 pages.");
       } catch (fallbackErr) {
         setExtractedText("");
         setNumPages(null);
@@ -137,6 +144,27 @@ export default function Home() {
     if (!chunks.length) return "0%";
     return `${Math.round(((currentIndex + 1) / chunks.length) * 100)}%`;
   }, [chunks.length, currentIndex]);
+
+  const handleLoadFull = async () => {
+    if (!file) return;
+    setIsLoading(true);
+    setExtractProgress(0);
+    setEtaSeconds(null);
+    extractStartRef.current = Date.now();
+    try {
+      const full = await extractTextClient(file, Number.MAX_SAFE_INTEGER);
+      setExtractedText(full.text || "");
+      setNumPages(full.numPages || null);
+      setIsPartial(false);
+      setPartialPages(0);
+      setExtractProgress(100);
+      setError("");
+    } catch (err) {
+      setError(err.message || "Failed to load full document.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -206,6 +234,18 @@ export default function Home() {
                 )}
                 {!isLoading && !extractedText && (
                   <p className="text-slate-500">Upload a PDF to see the extracted text.</p>
+                )}
+                {!isLoading && isPartial && (
+                  <div className="rounded-xl bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                    Loaded the first {partialPages} pages for faster start.
+                    <button
+                      type="button"
+                      onClick={handleLoadFull}
+                      className="ml-3 rounded-full border border-amber-200 bg-white px-3 py-1 text-[11px] font-semibold text-amber-800 transition hover:border-amber-400 dark:border-amber-700 dark:bg-slate-900 dark:text-amber-100"
+                    >
+                      Load full document
+                    </button>
+                  </div>
                 )}
                 {chunks.map((chunk, index) => (
                   <p
