@@ -23,6 +23,7 @@ export default function Home() {
   const [volume, setVolume] = useState(1);
   const [voiceURI, setVoiceURI] = useState("");
   const [darkMode, setDarkMode] = useState(false);
+  const [extractProgress, setExtractProgress] = useState(0);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("pdfreader-dark");
@@ -52,11 +53,13 @@ export default function Home() {
     const data = await nextFile.arrayBuffer();
     const doc = await pdfjs.getDocument({ data }).promise;
     const pageTexts = [];
+    setExtractProgress(0);
     for (let pageNum = 1; pageNum <= doc.numPages; pageNum += 1) {
       const page = await doc.getPage(pageNum);
       const content = await page.getTextContent();
       const strings = content.items.map((item) => item.str);
       pageTexts.push(strings.join(" "));
+      setExtractProgress(Math.round((pageNum / doc.numPages) * 100));
     }
     return { text: pageTexts.join("\n\n"), numPages: doc.numPages };
   };
@@ -75,6 +78,7 @@ export default function Home() {
     }
 
     setIsLoading(true);
+    setExtractProgress(0);
     setFile(nextFile);
     setFileName(nextFile.name);
     resetPlayback();
@@ -95,6 +99,7 @@ export default function Home() {
 
       setExtractedText(data.text || "");
       setNumPages(data.numpages || null);
+      setExtractProgress(100);
     } catch (err) {
       try {
         const fallback = await extractTextClient(nextFile);
@@ -167,7 +172,18 @@ export default function Home() {
                 tabIndex={0}
                 aria-busy={isLoading}
               >
-                {isLoading && <p>Extracting text…</p>}
+                {isLoading && (
+                  <div className="space-y-2">
+                    <p>Extracting text… {extractProgress}%</p>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                      <div
+                        className="progress-gradient h-full transition-all"
+                        style={{ width: `${extractProgress}%` }}
+                        aria-hidden
+                      />
+                    </div>
+                  </div>
+                )}
                 {!isLoading && !extractedText && (
                   <p className="text-slate-500">Upload a PDF to see the extracted text.</p>
                 )}
