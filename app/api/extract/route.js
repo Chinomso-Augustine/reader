@@ -1,6 +1,5 @@
-import pdfParse from "pdf-parse";
-
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -31,6 +30,7 @@ export async function POST(request) {
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+    const { default: pdfParse } = await import("pdf-parse");
     const data = await pdfParse(buffer);
 
     if (!data.text || data.text.trim().length === 0) {
