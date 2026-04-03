@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import FileUpload from "./components/FileUpload";
 import PDFViewer from "./components/PDFViewer";
 import AudioPlayer from "./components/AudioPlayer";
@@ -24,6 +24,8 @@ export default function Home() {
   const [voiceURI, setVoiceURI] = useState("");
   const [darkMode, setDarkMode] = useState(false);
   const [extractProgress, setExtractProgress] = useState(0);
+  const [etaSeconds, setEtaSeconds] = useState(null);
+  const extractStartRef = useRef(null);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("pdfreader-dark");
@@ -39,6 +41,18 @@ export default function Home() {
     setChunks(chunkText(extractedText));
   }, [extractedText]);
 
+  useEffect(() => {
+    if (!isLoading || extractProgress <= 0 || extractProgress >= 100) {
+      setEtaSeconds(null);
+      return;
+    }
+    const start = extractStartRef.current;
+    if (!start) return;
+    const elapsedMs = Date.now() - start;
+    const remainingMs = (elapsedMs * (100 - extractProgress)) / extractProgress;
+    setEtaSeconds(Math.max(1, Math.round(remainingMs / 1000)));
+  }, [extractProgress, isLoading]);
+
   const resetPlayback = () => {
     window.speechSynthesis?.cancel();
     setIsPlaying(false);
@@ -53,6 +67,7 @@ export default function Home() {
     const data = await nextFile.arrayBuffer();
     const doc = await pdfjs.getDocument({ data }).promise;
     const pageTexts = [];
+    extractStartRef.current = Date.now();
     setExtractProgress(0);
     for (let pageNum = 1; pageNum <= doc.numPages; pageNum += 1) {
       const page = await doc.getPage(pageNum);
@@ -79,6 +94,8 @@ export default function Home() {
 
     setIsLoading(true);
     setExtractProgress(0);
+    setEtaSeconds(null);
+    extractStartRef.current = Date.now();
     setFile(nextFile);
     setFileName(nextFile.name);
     resetPlayback();
@@ -174,7 +191,10 @@ export default function Home() {
               >
                 {isLoading && (
                   <div className="space-y-2">
-                    <p>Extracting text… {extractProgress}%</p>
+                    <p>
+                      Extracting text… {extractProgress}%
+                      {etaSeconds ? ` • ~${etaSeconds}s remaining` : ""}
+                    </p>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
                       <div
                         className="progress-gradient h-full transition-all"
